@@ -180,13 +180,7 @@ void loop() {
     istStromLA = (analogRead(analogStromLA) * 5.0) / (1023.0 * 1.5); //nur kopiert, ggf. leicht abweichende Parameter
     Serial.print("Eingestellter Lastaktorstrom ist "); Serial.println(istStromLA);
 
-    error = sollStromMSM - istStromSP;
-    integralMSM += (KiMSM* error);
-    pwm_out = (KpMSM * error) + integralMSM;
-    pwm_out = constrain(pwm_out, 0.0, 100.0);
-    AusgabeStromMSM.pulse_perc(pwm_out); 
-    
-    
+     
     //Erneute Messung der Auslenkung und Berechnung der Dehnung
     auslenkung = (analogRead(inLaser)*5/1023.0)*7.7/3.98; // 7,7 mm pro 3,98 V
     dehnungMSM =  abs(((auslenkung - nullReferenzLaser)/15)*100);
