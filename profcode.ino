@@ -1,5 +1,5 @@
 //Notwendig, um die Frequenz des PWM-Signals verstellen zu können
-#include <pwm.h>; 
+#include <pwm.h>
 
 //Setzen der Ausgänge für Tauchspulenaktor (Strom) und Spulenstrom
 PwmOut AusgabeStromMSM(6);
@@ -23,7 +23,7 @@ const int analogStromSP = A5;
 float sollStromLA = 0;
 float sollPWM_LA = 0;
 float istStromLA = 0; 
-float KpLA = 30, KiLA = 0.2, KdLA = 1;
+float KpLA = 1, KiLA = 0.5, KdLA = 1;
 float vorherigerFehlerLA = 0;
 float integralLA = 0;
 float derivativeLA = 0;
@@ -34,7 +34,7 @@ float sollPWMLA = 0;
 //Stromregelung MSM - hier nicht relevant, Viariablen schon initialisiert
 float sollPWMMSM = 0;
 float istStromSP = 0;
-float KpMSM = 30, KiMSM = 1, KdMSM = 1;
+float KpMSM = 30, KiMSM = 2, KdMSM = 1;
 float vorherigerFehlerMSM = 0;
 float integralMSM = 0;
 
@@ -123,7 +123,7 @@ void loop() {
       // Positional PI
       float error = sollStromMSM - istStromSP;
       integralMSM += (KiMSM * error);
-      integralMSM = constrain(integralMSM, -70, 70); // Anti-Windup
+      integralMSM = constrain(integralMSM, -80, 80); // Anti-Windup
       float pwm_out = (KpMSM * error) + integralMSM;
       pwm_out = constrain(pwm_out, 0.0, 100.0);
       
@@ -132,20 +132,20 @@ void loop() {
 ///////////////////////////////////////// stromlast part
       istStromLA = (analogRead(analogStromLA) * 5.0) / (1023.0 * 1.5);
         
-        float errorLA = sollStromLA - istStromLA;
-        integralLA += (KiLA * errorLA);
-        integralLA = constrain(integralLA, -70, 70); // Anti-Windup
+      float errorLA = sollStromLA - istStromLA;
+      integralLA += (KiLA * errorLA);
+      integralLA = constrain(integralLA, -70, 70); // Anti-Windup
         
         // Berechnung des neuen PWM Werts
         // Man kann den vorher berechneten "sollPWMLA" als Basis (Feedforward) nehmen und den Regler nur die Differenz machen lassen
         // Oder man lässt den Regler alles machen. Hier einfacher PI-Ansatz:
-        float pwm_out_LA = (KpLA * errorLA) + integralLA; 
+      float pwm_out_LA = (KpLA * errorLA) + integralLA; 
         
         // Falls du den Startwert (Feedforward) nutzen willst, nutze stattdessen:
         // float pwm_out_LA = sollPWMLA + (KpLA * errorLA) + integralLA;
         
-        pwm_out_LA = constrain(pwm_out_LA, 0.0, 100.0);
-        AusgabeStromLA.pulse_perc(pwm_out_LA);
+      pwm_out_LA = constrain(pwm_out_LA, 0.0, 100.0);
+      AusgabeStromLA.pulse_perc(pwm_out_LA);
 
     Serial.print("gemessener Spulenstrom ist "); Serial.println(istStromSP);
     Serial.print("gemessener Lastaktorstrom ist "); Serial.println(istStromLA);
