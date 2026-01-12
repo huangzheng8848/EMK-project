@@ -1,0 +1,78 @@
+% % % 1：模拟生成的一阶回转曲线 (FORC)没有真实数据时，使用双曲正切函数（tanh）或代数函数来模拟磁化曲线。
+% ------------------------------------------------------------------------
+
+clear; clc;
+
+% 1. 定义输入范围 (例如磁场 H 从 -1 到 1)
+H_range = linspace(-1, 1, 100); 
+
+% 2. 模拟上升支 (Major Ascending Curve)
+% 假设饱和值 A=1, 形状参数 k=2
+f_up = @(h) tanh(2*h); 
+
+% 3. 生成一系列 FORCs (从不同的 alpha 点回转)
+alphas = [0.2, 0.4, 0.6, 0.8, 1.0]; % 不同的转向点
+beta_steps = 50;
+forc_data = [];
+
+for a = alphas
+    % 从 alpha 点下降到 -1 的过程
+    betas = linspace(a, -1, beta_steps)';
+    % 模拟下降支：这里用一个简化的数学模型表示回转
+    % 实际中，Everett 值 E(a,b) 就是 alpha 点的值与下降到 b 点的值之差的一半
+    strain_at_a = f_up(a);
+    % 模拟在 b 点的输出 (带有滞后宽度)
+    strains = strain_at_a - 1.2 * (tanh(2*a) - tanh(2*betas)); 
+    
+    % 存储为 [alpha, beta, strain]
+    forc_data = [forc_data; repmat(a, beta_steps, 1), betas, strains];
+end
+
+
+%===========================================================================
+% ----------------------------以下为有用代码---------------------------------
+%===========================================================================
+% % % 2：根据模拟数据计算 Everett 矩阵根据公式 
+% E(alpha, beta) = frac{1}{2}(f_alpha - f_{alpha\beta})
+% 将上述模拟出的 strains 转换为 Everett 表面上的点。
+%--------------------------------------------------------------------------
+% 提取数据
+alpha_raw = forc_data(:,1);
+beta_raw = forc_data(:,2);
+f_alphabeta = forc_data(:,3);
+
+% 计算每个 alpha 对应的 f_alpha (即 beta=alpha 时的输出)
+% 在模拟中，这可以通过查找或直接计算得到
+f_alpha = tanh(2 * alpha_raw); 
+
+% 计算 Everett 值
+E_vals = 0.5 * (f_alpha - f_alphabeta);
+
+% 确保物理约束：alpha 必须大于等于 beta
+valid_idx = alpha_raw >= beta_raw;
+alpha_v = alpha_raw(valid_idx);
+beta_v = beta_raw(valid_idx);
+E_v = E_vals(valid_idx);
+% -------------------------------------------------------------------------
+% % % 3：拟合与可视化
+% -------------------------------------------------------------------------
+% 使用 scatteredInterpolant 创建插值对象
+F_E = scatteredInterpolant(alpha_v, beta_v, E_v, 'linear', 'none');
+
+% 准备网格进行绘图
+[A, B] = meshgrid(linspace(-1, 1, 100), linspace(-1, 1, 100));
+E_surface = F_E(A, B);
+
+% 再次强制物理边界：alpha < beta 的地方设为 0
+E_surface(A < B) = 0;
+
+% 可视化
+figure('Color', 'w');
+surf(A, B, E_surface, 'EdgeColor', 'none');
+view(135, 30);
+xlabel('\alpha (Rising Point)');
+ylabel('\beta (Falling Point)');
+zlabel('Everett Value E');
+title('Simulated Everett Surface');
+colorbar;
+colormap jet;
