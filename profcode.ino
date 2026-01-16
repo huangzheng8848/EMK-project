@@ -34,7 +34,7 @@ float sollPWMLA = 0;
 //Stromregelung MSM - hier nicht relevant, Viariablen schon initialisiert
 float sollPWMMSM = 0;
 float istStromSP = 0;
-float KpMSM = 30, KiMSM = 2, KdMSM = 1;
+float KpMSM = 30, KiMSM = 20, KdMSM = 10;
 float vorherigerFehlerMSM = 0;
 float integralMSM = 0;
 
@@ -88,89 +88,82 @@ void setup() {
   digitalWrite(in4,HIGH);
 
 }
-
+//这里有些更改，为了适配python的plot代码
 void loop() {
   String befehl = Serial.readStringUntil('\n');
-  befehl.trim(); // Entfernt führende und nachfolgende Leerzeichen und Zeilenumbrüche
+  befehl.trim(); 
 
-  //Starten der Eingabe über den Serial Monitor
+  // 1. 接收命令，重置变量
   if (status == Normal && befehl == "Neu") {
-        
-        //Um einmaligen Durchlauf des Programmes zu gewährleisten
-        i = 0;
-        sollStromMSM=0.5;
-        sollStromLA=0.5;
-      }
+    i = 0;
+    sollStromMSM = 0.5;
+    sollStromLA = 0.5;
 
-  if (status == Normal && i == 0){
-    Serial.print("start");
+    // === 【新增】必须重置积分项，否则第二次运行会直接起飞 ===
+    integralLA = 0;
+    integralMSM = 0;
+  }
 
-  
-    ////////////////////////////////////////////////////////////////////////////
-    // PI-Regeler Laufzeit 
+  // 2. 开始测量周期
+  if (status == Normal && i == 0) {
+    
+    // 【重要改动 1】在开始测量前，先发送 Python 需要的“暗号”标题
+    Serial.println("Kraft, Spulestrom, Dehnung");
+
     long sampleTime_ms = 10;
-    unsigned long duration = 2000;
+    unsigned long duration = 1000;
     unsigned long startTime = millis();
     unsigned long lastSampleTime = millis();
     
-    while (millis() - startTime < 2000) {
+    // 进入 2秒 的实时控制与测量循环
+    while (millis() - startTime < duration) { // duration = 2000
       unsigned long now = millis();
+      
       if(now - lastSampleTime >= sampleTime_ms){
-      lastSampleTime = now;
-      
-      istStromSP = (analogRead(analogStromSP) * 5.0) / (1023.0 * 1.5);
-  
-      // Positional PI
-      float error = sollStromMSM - istStromSP;
-      integralMSM += (KiMSM * error);
-      integralMSM = constrain(integralMSM, -80, 80); // Anti-Windup
-      float pwm_out = (KpMSM * error) + integralMSM;
-      pwm_out = constrain(pwm_out, 0.0, 100.0);
-      
-      AusgabeStromMSM.pulse_perc(pwm_out);
-      current_pwm = pwm_out;
-///////////////////////////////////////// stromlast part
-      istStromLA = (analogRead(analogStromLA) * 5.0) / (1023.0 * 1.5);
+        lastSampleTime = now;
         
-      float errorLA = sollStromLA - istStromLA;
-      integralLA += (KiLA * errorLA);
-      integralLA = constrain(integralLA, -70, 70); // Anti-Windup
-        
-        // Berechnung des neuen PWM Werts
-        // Man kann den vorher berechneten "sollPWMLA" als Basis (Feedforward) nehmen und den Regler nur die Differenz machen lassen
-        // Oder man lässt den Regler alles machen. Hier einfacher PI-Ansatz:
-      float pwm_out_LA = (KpLA * errorLA) + integralLA; 
-        
-        // Falls du den Startwert (Feedforward) nutzen willst, nutze stattdessen:
-        // float pwm_out_LA = sollPWMLA + (KpLA * errorLA) + integralLA;
-        
-      pwm_out_LA = constrain(pwm_out_LA, 0.0, 100.0);
-      AusgabeStromLA.pulse_perc(pwm_out_LA);
+        // --- A. 读取与控制 MSM 电流 ---
+        istStromSP = (analogRead(analogStromSP) * 5.0) / (1023.0 * 1.5);
+        float error = sollStromMSM - istStromSP;
+        integralMSM += (KiMSM * error);
+        integralMSM = constrain(integralMSM, -100, 100); 
+        float pwm_out = (KpMSM * error) + integralMSM;
+        pwm_out = constrain(pwm_out, 0.0, 100.0);
+        AusgabeStromMSM.pulse_perc(pwm_out);
+        current_pwm = pwm_out;
 
-    Serial.print("gemessener Spulenstrom ist "); Serial.println(istStromSP);
-    Serial.print("gemessener Lastaktorstrom ist "); Serial.println(istStromLA);
- ////////////////////////////////////////////////////       
+        // --- B. 读取与控制 Lastaktor (力) ---
+        istStromLA = (analogRead(analogStromLA) * 5.0) / (1023.0 * 1.5);
+        float errorLA = sollStromLA - istStromLA;
+        integralLA += (KiLA * errorLA);
+        integralLA = constrain(integralLA, -70, 70); 
+        float pwm_out_LA = (KpLA * errorLA) + integralLA; 
+        pwm_out_LA = constrain(pwm_out_LA, 0.0, 100.0);
+        AusgabeStromLA.pulse_perc(pwm_out_LA);
+
+        // --- C. 【重要改动 2】必须在循环内实时计算应变！---
+        // 只有放在这里，dehnungMSM 才会随着激光传感器的变化而变化
+        auslenkung = (analogRead(inLaser) * 5.0 / 1023.0) * 7.7 / 3.98; 
+        dehnungMSM = abs(((auslenkung - nullReferenzLaser) / 15.0) * 100.0);
+
+        // --- D. 发送纯净数据给 Python ---
+        // 格式：数值,数值,数值 (对应 Python 的 parts[0], parts[1], parts[2])
+        Serial.print(istStromLA); 
+        Serial.print(","); 
+        Serial.print(istStromSP);
+        Serial.print(","); 
+        Serial.print(dehnungMSM); // 只有这里换行
+        Serial.print(",");          // 加个逗号
+        Serial.println(current_pwm); // 打印当前的 PWM 值！
       }
     }
 
-    
-    
-  
-    //Erneute Messung der Auslenkung und Berechnung der Dehnung
-    auslenkung = (analogRead(inLaser)*5/1023.0)*7.7/3.98; // 7,7 mm pro 3,98 V
-    dehnungMSM =  abs(((auslenkung - nullReferenzLaser)/15)*100);
-
-    Serial.println("Kraft, Spulestrom, Dehnung");
-    Serial.print(sollKraftLA);
-    Serial.print(", ");
-    Serial.print(sollStromMSM);
-    Serial.print(", ");
-    Serial.print("Dehnung in [%]: "); Serial.println(dehnungMSM);
-    i = 1;
+    // 测量结束
+    i = 1; 
   }  
 
-  //Zurücksetzen der Werte auf 0, um Überhitzung zu vermeiden 
-  if (status == Normal && i == 1){
+  // 停止输出
+  if (status == Normal && i == 1) {
     AusgabeStromMSM.pulse_perc(0.0f);
     AusgabeStromLA.pulse_perc(0.0f);
   }
