@@ -1,0 +1,134 @@
+import serial
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from matplotlib.ticker import MaxNLocator
+from collections import deque
+
+# Arduino-Setup
+PORT = 'COM3'  # 请确认端口是否正确
+BAUDRATE = 9600
+ser = serial.Serial(PORT, BAUDRATE, timeout=1)
+
+ser.reset_input_buffer()  # 清空缓冲区
+
+# Fenstergröße maximal 1000 Punkte
+window_size = 1000
+kraft = deque(maxlen=window_size)
+strom = deque(maxlen=window_size)
+dehnung = deque(maxlen=window_size)
+PWM = deque(maxlen=window_size)
+index = deque(maxlen=window_size)
+
+start_reading = False
+counter = 0
+
+# Plot vorbereiten
+fig, ax1 = plt.subplots()
+ax2 = ax1.twinx()  # 创建共享X轴的第二Y轴
+
+# === 修改 1: 线条样式区分 ===
+# 左轴 (ax1): 力(蓝) 和 电流(绿)
+line_kraft, = ax1.plot([], [], 'b-', label="IstLAstrom [A]")
+line_strom, = ax1.plot([], [], 'g-', label="IstMSMstrom [A]")
+
+# 右轴 (ax2): 应变(红实线) 和 PWM(橙色虚线)
+line_dehnung, = ax2.plot([], [], 'r-', linewidth=1.5, label="Dehnung [%]")
+line_PWM, = ax2.plot([], [], color='orange', linestyle='--', linewidth=1.5, label="PWM [%]")
+
+# === 修改 2: 标签合并 ===
+ax1.set_xlabel("Index")
+ax1.set_ylabel("Kraft / Spulestrom [A]")
+ax2.set_ylabel("Dehnung / PWM [%]")  # 右侧Y轴同时也表示PWM
+
+# 合并图例 (把两个轴的图例放在一起)
+lines_1, labels_1 = ax1.get_legend_handles_labels()
+lines_2, labels_2 = ax2.get_legend_handles_labels()
+ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper left')
+
+# === 修改 3: 调整显示范围 ===
+initial_xlim = 100  # 初始看多一点点
+ax1.set_xlim(0, initial_xlim)
+
+# 左轴范围 (电流/力)
+ax1.set_ylim(-0.5, 2.0)
+
+# 右轴范围 (应变/PWM) -> 这里必须改大！
+# PWM最大是100，应变可能是20-30，所以设到110比较安全
+ax2.set_ylim(-5, 110)
+
+ax1.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+
+def init():
+    return line_kraft, line_strom, line_dehnung, line_PWM
+
+
+def update(frame):
+    global start_reading, counter
+
+    while ser.in_waiting:
+        try:
+            line = ser.readline().decode('utf-8').strip()
+            print("Arduino sagt:", line)
+
+            if "Kraft, Spulestrom, Dehnung" in line:
+                start_reading = True
+                continue
+
+            # 不再强制检查 start_reading，只要格式对就解析
+            # 这样容错率更高
+            parts = line.split(',')
+
+            # 确保收到的是4个数据 (Force, Current, Strain, PWM)
+            if len(parts) == 4:
+                k = float(parts[0])  # istStromLA
+                s = float(parts[1])  # istStromSP
+                d = float(parts[2])  # dehnungMSM
+                p = float(parts[3])  # PWM
+
+                kraft.append(k)
+                strom.append(s)
+                dehnung.append(d)
+                PWM.append(p)
+                index.append(counter)
+                counter += 1
+
+                # 自动滚动 X 轴
+                left, right = ax1.get_xlim()
+                if counter >= right:
+                    # 每次向右扩展，保持一定的视窗移动
+                    ax1.set_xlim(left, right + 10)
+
+                    # 更新所有线条数据
+                line_kraft.set_data(index, kraft)
+                line_strom.set_data(index, strom)
+                line_dehnung.set_data(index, dehnung)
+                line_PWM.set_data(index, PWM)
+
+        except ValueError:
+            pass
+        except Exception as e:
+            print(f"Error: {e}")
+
+    # 自动缩放 Y 轴 (可选，如果不想固定范围的话)
+    # ax1.relim()
+    # ax1.autoscale_view()
+    # ax2.relim()
+    # ax2.autoscale_view()
+
+    return line_kraft, line_strom, line_dehnung, line_PWM
+
+
+# Eingabeaufforderung für den Benutzer
+user_input = input("Gib 'Neu' ein, um die Messung zu starten: ")
+
+while True:
+    if user_input.strip().lower() == "neu":
+        ser.write(b'Neu\n')
+        print("Befehl 'Neu' gesendet.")
+        user_input = None
+        break
+
+ani = animation.FuncAnimation(fig, update, init_func=init, interval=50, blit=False, cache_frame_data=False)
+plt.tight_layout()
+plt.show()
