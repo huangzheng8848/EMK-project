@@ -23,7 +23,7 @@ const int analogStromSP = A5;
 float sollStromLA = 0;
 float sollPWM_LA = 0;
 float istStromLA = 0; 
-float KpLA = 1, KiLA = 0.5, KdLA = 1;
+float KpLA = 0.1, KiLA = 4, KdLA = 0;
 float vorherigerFehlerLA = 0;
 float integralLA = 0;
 float derivativeLA = 0;
@@ -88,7 +88,107 @@ void setup() {
   digitalWrite(in4,HIGH);
 
 }
-//这里有些更改，为了适配python的plot代码
+
+/**void loop() {
+  String befehl = Serial.readStringUntil('\n');
+  befehl.trim(); // Entfernt führende und nachfolgende Leerzeichen und Zeilenumbrüche
+
+  //Starten der Eingabe über den Serial Monitor
+  if (status == Normal && befehl == "Neu") {
+        
+        //Um einmaligen Durchlauf des Programmes zu gewährleisten
+        i = 0;
+        sollStromMSM=0.5;
+        sollStromLA=0.5;
+      }
+
+  if (status == Normal && i == 0){
+    Serial.print("start");
+
+  
+    ////////////////////////////////////////////////////////////////////////////
+    // PI-Regeler Laufzeit 
+    long sampleTime_ms = 10;
+    unsigned long duration = 2000;
+    unsigned long startTime = millis();
+    unsigned long lastSampleTime = millis();
+    
+    while (millis() - startTime < 2000) {
+      unsigned long now = millis();
+      if(now - lastSampleTime >= sampleTime_ms){
+      lastSampleTime = now;
+      
+      istStromSP = (analogRead(analogStromSP) * 5.0) / (1023.0 * 1.5);
+  
+      // Positional PI
+      float error = sollStromMSM - istStromSP;
+      integralMSM += (KiMSM * error);
+      integralMSM = constrain(integralMSM, -100, 100); // Anti-Windup
+      float pwm_out = (KpMSM * error) + integralMSM;
+      pwm_out = constrain(pwm_out, 0.0, 100.0);
+      
+      AusgabeStromMSM.pulse_perc(pwm_out);
+      current_pwm = pwm_out;
+///////////////////////////////////////// stromlast part
+      istStromLA = (analogRead(analogStromLA) * 5.0) / (1023.0 * 1.5);
+        
+      float errorLA = sollStromLA - istStromLA;
+      integralLA += (KiLA * errorLA);
+      integralLA = constrain(integralLA, -70, 70); // Anti-Windup
+        
+        // Berechnung des neuen PWM Werts
+        // Man kann den vorher berechneten "sollPWMLA" als Basis (Feedforward) nehmen und den Regler nur die Differenz machen lassen
+        // Oder man lässt den Regler alles machen. Hier einfacher PI-Ansatz:
+      float pwm_out_LA = (KpLA * errorLA) + integralLA; 
+        
+        // Falls du den Startwert (Feedforward) nutzen willst, nutze stattdessen:
+        // float pwm_out_LA = sollPWMLA + (KpLA * errorLA) + integralLA;
+        
+      pwm_out_LA = constrain(pwm_out_LA, 0.0, 100.0);
+      AusgabeStromLA.pulse_perc(pwm_out_LA);
+
+    //Serial.print("gemessener Spulenstrom ist "); 
+    //Serial.println(istStromSP);
+    //Serial.print("gemessener Lastaktorstrom ist "); 
+    //Serial.println(istStromLA);
+    // 1. 第一个数据：用 print (不换行) + 逗号
+    Serial.print(istStromLA); 
+    Serial.print(","); 
+
+// 2. 第二个数据：用 print (不换行) + 逗号
+    Serial.print(istStromSP);
+    Serial.print(","); 
+
+// 3. 第三个数据：用 println (换行) 表示这一组数据结束
+// 必须加上这第三个数据，否则 Python 只有两个数也会报错
+    Serial.println(dehnungMSM);
+ ////////////////////////////////////////////////////       
+      }
+    }
+
+    
+    
+  
+    //Erneute Messung der Auslenkung und Berechnung der Dehnung
+    auslenkung = (analogRead(inLaser)*5/1023.0)*7.7/3.98; // 7,7 mm pro 3,98 V
+    dehnungMSM =  abs(((auslenkung - nullReferenzLaser)/15)*100);
+
+    Serial.println("Kraft, Spulestrom, Dehnung");
+    Serial.print(sollKraftLA);
+    Serial.print(", ");
+    Serial.print(sollStromMSM);
+    Serial.print(", ");
+    Serial.print("Dehnung in [%]: "); Serial.println(dehnungMSM);
+    i = 1;
+  }  
+
+  //Zurücksetzen der Werte auf 0, um Überhitzung zu vermeiden 
+  if (status == Normal && i == 1){
+    AusgabeStromMSM.pulse_perc(0.0f);
+    AusgabeStromLA.pulse_perc(0.0f);
+  }
+}/**/
+
 void loop() {
   String befehl = Serial.readStringUntil('\n');
   befehl.trim(); 
@@ -97,7 +197,7 @@ void loop() {
   if (status == Normal && befehl == "Neu") {
     i = 0;
     sollStromMSM = 0.5;
-    sollStromLA = 0.5;
+    sollStromLA = 1.5;
 
     // === 【新增】必须重置积分项，否则第二次运行会直接起飞 ===
     integralLA = 0;
@@ -110,8 +210,8 @@ void loop() {
     // 【重要改动 1】在开始测量前，先发送 Python 需要的“暗号”标题
     Serial.println("Kraft, Spulestrom, Dehnung");
 
-    long sampleTime_ms = 10;
-    unsigned long duration = 1000;
+    long sampleTime_ms = 20;
+    unsigned long duration = 5000;
     unsigned long startTime = millis();
     unsigned long lastSampleTime = millis();
     
@@ -136,7 +236,7 @@ void loop() {
         istStromLA = (analogRead(analogStromLA) * 5.0) / (1023.0 * 1.5);
         float errorLA = sollStromLA - istStromLA;
         integralLA += (KiLA * errorLA);
-        integralLA = constrain(integralLA, -70, 70); 
+        integralLA = constrain(integralLA, -60, 60); 
         float pwm_out_LA = (KpLA * errorLA) + integralLA; 
         pwm_out_LA = constrain(pwm_out_LA, 0.0, 100.0);
         AusgabeStromLA.pulse_perc(pwm_out_LA);
