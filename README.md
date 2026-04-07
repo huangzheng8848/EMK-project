@@ -1,5 +1,7 @@
 # Projektstruktur und Dateibeschreibung
 
+Sie Können die Dokumente in MSM Project.zip finden
+
 - Manuelle_Hysteresemessung/
   Programm zur manuellen Messung des Hysterese-Effekts (Strom-Dehnung). Hinweis: Das Array muss für jede Messung manuell geändert werden.
 
