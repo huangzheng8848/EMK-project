@@ -6,8 +6,8 @@
 - Messergebnisse + Invers_control/
   Beinhaltet die gesammelten Messdaten sowie das Hauptprogramm (Invers control.py)  zur Positionsregelung.
 
-- Stromregler/
-  Arduino-Programm zur Stromregelung der Hardware.
+- Invers_control_arduino/
+  Arduino-Programm zur Invers-Dehnung-Kontrolle.
 
 - Test_Ergebnisse/
   Ordner für die Testergebnisse.
